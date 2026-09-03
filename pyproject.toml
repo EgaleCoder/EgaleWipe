@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egalewipe"
+version = "1.0.0"
+description = "A lightweight Windows desktop application by EgaleCoders to quickly and safely clean folder contents."
+readme = "README.md"
+authors = [
+    { name = "EgaleCoders", email = "contact@egalecoders.com" }
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+egalewipe = "main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+exclude = ["tests*"]
