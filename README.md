@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Egale Wipe](assets/EgaleWipe_header.png)
-
+<h1>EgaleWipe</h1>
 **A modern, lightweight Windows desktop utility engineered by EgaleCoders to safely and instantly clean folder contents while preserving root directory structures.**
 
 [![Release](https://img.shields.io/github/v/release/EgaleCoder/EgaleWipe?style=flat-square&color=22c55e)](https://github.com/EgaleCoder/EgaleWipe/releases)
