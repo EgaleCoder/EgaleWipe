@@ -1,0 +1,53 @@
+name: Build and Release Windows Executable
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Build Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build Standalone Windows Executable
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --icon=assets/EgaleWipe.ico --add-data "assets;assets" --name "EgaleWipe" main.py
+
+      - name: Generate Checksum (SHA-256)
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Path "dist/EgaleWipe.exe" -Algorithm SHA256).Hash
+          "$hash  EgaleWipe.exe" | Out-File -FilePath "dist/checksums.txt" -Encoding ascii
+          Write-Host "Generated SHA256: $hash"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/EgaleWipe.exe
+            dist/checksums.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
