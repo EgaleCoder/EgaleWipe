@@ -25,44 +25,64 @@ def scan_all_folders(folders: List[Path]) -> int:
 
 def delete_single_file(
     file_path: Path,
-    prompt_skip_fn: Optional[Callable[[str, str], bool]] = None,
-) -> bool:
+    prompt_skip_fn: Optional[Callable[[Path, bool, str], str]] = None,
+) -> str:
     """
     Attempts to delete a single file.
-    If deletion fails, calls prompt_skip_fn(file_name, error_message).
-    Returns True if deleted or skipped (to continue), False to abort.
+    If deletion fails, calls prompt_skip_fn(file_path, is_dir=False, error_message).
+    Returns 'deleted', 'skipped', or 'abort'.
     """
-    try:
-        # If file is read-only on Windows, remove read-only attribute
-        if not os.access(file_path, os.W_OK):
-            os.chmod(file_path, 0o777)
-        file_path.unlink()
-        return True
-    except Exception as exc:
-        if prompt_skip_fn:
-            should_skip = prompt_skip_fn(file_path.name, str(exc))
-            return should_skip
-        return False
+    while True:
+        try:
+            # If file is read-only on Windows, remove read-only attribute
+            if not os.access(file_path, os.W_OK):
+                os.chmod(file_path, 0o777)
+            file_path.unlink()
+            return "deleted"
+        except Exception as exc:
+            if prompt_skip_fn:
+                action = prompt_skip_fn(file_path, False, str(exc))
+                if isinstance(action, bool):
+                    action = "skip" if action else "abort"
+                if action == "retry":
+                    continue
+                elif action == "skip":
+                    return "skipped"
+                else:
+                    return "abort"
+            return "abort"
 
 
 def delete_single_dir(
     dir_path: Path,
-    prompt_skip_fn: Optional[Callable[[str, str], bool]] = None,
-) -> bool:
-    """Attempts to remove an empty directory."""
-    try:
-        dir_path.rmdir()
-        return True
-    except Exception as exc:
-        if prompt_skip_fn:
-            return prompt_skip_fn(dir_path.name, str(exc))
-        return False
+    prompt_skip_fn: Optional[Callable[[Path, bool, str], str]] = None,
+) -> str:
+    """
+    Attempts to remove an empty directory.
+    Returns 'deleted', 'skipped', or 'abort'.
+    """
+    while True:
+        try:
+            dir_path.rmdir()
+            return "deleted"
+        except Exception as exc:
+            if prompt_skip_fn:
+                action = prompt_skip_fn(dir_path, True, str(exc))
+                if isinstance(action, bool):
+                    action = "skip" if action else "abort"
+                if action == "retry":
+                    continue
+                elif action == "skip":
+                    return "skipped"
+                else:
+                    return "abort"
+            return "abort"
 
 
 def clean_folders(
     folders: List[Path],
     progress_fn: Optional[Callable[[str, int, int], None]] = None,
-    prompt_skip_fn: Optional[Callable[[str, str], bool]] = None,
+    prompt_skip_fn: Optional[Callable[[Path, bool, str], str]] = None,
     is_cancelled_fn: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """
@@ -71,7 +91,7 @@ def clean_folders(
 
     :param folders: List of Path objects to clean.
     :param progress_fn: Callback(current_path_str, cleaned_count, total_count).
-    :param prompt_skip_fn: Callback(item_name, error_str) -> bool (True=Skip, False=Abort).
+    :param prompt_skip_fn: Callback(item_path, is_dir, error_str) -> str ('retry', 'skip', 'abort').
     :param is_cancelled_fn: Callback() -> bool returning True if cancelled.
     :return: Summary dictionary with results.
     """
@@ -107,16 +127,17 @@ def clean_folders(
                 if progress_fn:
                     progress_fn(str(file_path), cleaned_count, total_items)
 
-                success = delete_single_file(file_path, prompt_skip_fn)
-                if success:
+                status = delete_single_file(file_path, prompt_skip_fn)
+                if status == "deleted":
                     cleaned_count += 1
                     folder_cleaned = True
-                else:
-                    # User chose 'No' on prompt (Abort) or unhandled error
+                elif status == "skipped":
                     skipped_count += 1
-                    if prompt_skip_fn:
-                        cancelled = True
-                        break
+                else:
+                    # User chose Cancel / Abort
+                    skipped_count += 1
+                    cancelled = True
+                    break
 
             if cancelled:
                 break
@@ -134,15 +155,16 @@ def clean_folders(
                 if progress_fn:
                     progress_fn(str(dir_path), cleaned_count, total_items)
 
-                success = delete_single_dir(dir_path, prompt_skip_fn)
-                if success:
+                status = delete_single_dir(dir_path, prompt_skip_fn)
+                if status == "deleted":
                     cleaned_count += 1
                     folder_cleaned = True
+                elif status == "skipped":
+                    skipped_count += 1
                 else:
                     skipped_count += 1
-                    if prompt_skip_fn:
-                        cancelled = True
-                        break
+                    cancelled = True
+                    break
 
             if cancelled:
                 break
