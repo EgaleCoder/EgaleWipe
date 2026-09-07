@@ -14,7 +14,7 @@ class CleanerWorker:
         self,
         folders: List[Path],
         on_progress: Callable[[str, int, int], None],
-        on_prompt_skip: Callable[[str, str], bool],
+        on_prompt_skip: Callable[[Path, bool, str], Any],
         on_complete: Callable[[Dict[str, Any]], None],
         on_error: Callable[[Exception], None],
         post_to_ui: Callable[[Callable[[], None]], None],
@@ -28,10 +28,12 @@ class CleanerWorker:
 
         self._cancel_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._batch_action: Optional[str] = None
 
     def start(self) -> None:
         """Starts the worker thread."""
         self._cancel_event.clear()
+        self._batch_action = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -47,24 +49,39 @@ class CleanerWorker:
         """Dispatches progress updates to the UI thread."""
         self.post_to_ui(lambda: self.on_progress(current_path, cleaned_count, total_items))
 
-    def _safe_prompt_skip(self, file_name: str, error_msg: str) -> bool:
+    def _safe_prompt_skip(self, item_path: Path, is_dir: bool, error_msg: str) -> str:
         """
         Synchronously requests user input on the UI thread for locked/in-use files.
-        Blocks the worker thread until the user answers Yes (Skip) or No (Abort).
+        If the user previously checked 'Do this for all current items', reuses that action.
+        Blocks the worker thread until the user makes a decision.
         """
+        if self._batch_action is not None:
+            return self._batch_action
+
         response_event = threading.Event()
-        decision_holder = {"skip": True}
+        decision_holder = {"action": "skip", "apply_to_all": False}
 
         def ask_in_ui() -> None:
             try:
-                decision = self.on_prompt_skip(file_name, error_msg)
-                decision_holder["skip"] = decision
+                res = self.on_prompt_skip(item_path, is_dir, error_msg)
+                if isinstance(res, tuple):
+                    action, apply_to_all = res
+                elif isinstance(res, bool):
+                    action, apply_to_all = ("skip" if res else "abort"), False
+                else:
+                    action, apply_to_all = str(res), False
+                decision_holder["action"] = action
+                decision_holder["apply_to_all"] = apply_to_all
             finally:
                 response_event.set()
 
         self.post_to_ui(ask_in_ui)
         response_event.wait()
-        return decision_holder["skip"]
+
+        if decision_holder["apply_to_all"]:
+            self._batch_action = decision_holder["action"]
+
+        return decision_holder["action"]
 
     def _run(self) -> None:
         """Worker thread entry point."""
