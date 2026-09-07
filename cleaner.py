@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Callable, List, Optional, Dict, Any
+from typing import Callable, List, Optional, Dict, Any, Tuple
 
 
 def scan_folder_items(folder_path: Path) -> int:
@@ -26,19 +26,25 @@ def scan_all_folders(folders: List[Path]) -> int:
 def delete_single_file(
     file_path: Path,
     prompt_skip_fn: Optional[Callable[[Path, bool, str], str]] = None,
-) -> str:
+) -> Tuple[str, int]:
     """
     Attempts to delete a single file.
     If deletion fails, calls prompt_skip_fn(file_path, is_dir=False, error_message).
-    Returns 'deleted', 'skipped', or 'abort'.
+    Returns a tuple of (status, bytes_freed): ('deleted'|'skipped'|'abort', int).
     """
+    file_size = 0
+    try:
+        file_size = file_path.stat().st_size
+    except Exception:
+        file_size = 0
+
     while True:
         try:
             # If file is read-only on Windows, remove read-only attribute
             if not os.access(file_path, os.W_OK):
                 os.chmod(file_path, 0o777)
             file_path.unlink()
-            return "deleted"
+            return "deleted", file_size
         except Exception as exc:
             if prompt_skip_fn:
                 action = prompt_skip_fn(file_path, False, str(exc))
@@ -47,10 +53,10 @@ def delete_single_file(
                 if action == "retry":
                     continue
                 elif action == "skip":
-                    return "skipped"
+                    return "skipped", 0
                 else:
-                    return "abort"
-            return "abort"
+                    return "abort", 0
+            return "abort", 0
 
 
 def delete_single_dir(
@@ -98,6 +104,7 @@ def clean_folders(
     total_items = scan_all_folders(folders)
     cleaned_count = 0
     skipped_count = 0
+    cleaned_bytes = 0
     cleaned_folders = []
     cancelled = False
 
@@ -127,9 +134,10 @@ def clean_folders(
                 if progress_fn:
                     progress_fn(str(file_path), cleaned_count, total_items)
 
-                status = delete_single_file(file_path, prompt_skip_fn)
+                status, file_size = delete_single_file(file_path, prompt_skip_fn)
                 if status == "deleted":
                     cleaned_count += 1
+                    cleaned_bytes += file_size
                     folder_cleaned = True
                 elif status == "skipped":
                     skipped_count += 1
@@ -183,6 +191,7 @@ def clean_folders(
         "total_items": total_items,
         "cleaned_count": cleaned_count,
         "skipped_count": skipped_count,
+        "cleaned_bytes": cleaned_bytes,
         "cleaned_folders": cleaned_folders,
         "cancelled": cancelled,
     }
