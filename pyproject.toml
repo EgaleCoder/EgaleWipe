@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "egalewipe"
-version = "1.0.0"
+version = "1.0.1"
 description = "A lightweight Windows desktop application by EgaleCoders to quickly and safely clean folder contents."
 readme = "README.md"
 authors = [
