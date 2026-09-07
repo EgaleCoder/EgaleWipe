@@ -2,6 +2,8 @@ name: Build and Release Windows Executable
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
       - 'v*'
@@ -18,6 +20,8 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,6 +33,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
+
+      - name: Determine Version & Release Tag
+        shell: pwsh
+        run: |
+          $ver = (Get-Content pyproject.toml | Select-String -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          $tag = "v$ver"
+          $tagExists = git tag -l $tag
+          if ($tagExists -and $env:GITHUB_REF -notlike "refs/tags/*") {
+            $tag = "v$ver.${{ github.run_number }}"
+            Write-Host "Tag $tagExists already exists, using $tag for this run."
+          } else {
+            Write-Host "Using tag: $tag"
+          }
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build Standalone Windows Executable
         run: |
@@ -43,8 +62,9 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "Egale Wipe ${{ env.RELEASE_TAG }}"
           files: |
             dist/EgaleWipe.exe
             dist/checksums.txt
