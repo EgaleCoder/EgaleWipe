@@ -1,6 +1,8 @@
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Tuple
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -207,6 +209,232 @@ class ProgressDialog(tk.Toplevel):
     def _on_window_close(self):
         if not self.is_cancelled:
             self._on_cancel()
+
+
+class FileInUseDialog(tk.Toplevel):
+    """
+    Windows-style 'File / Folder In Use' dialog with:
+    - Item icon, name, and timestamp
+    - 'Do this for all current items' checkbox
+    - 'Try Again', 'Skip', and 'Cancel' buttons
+    """
+
+    def __init__(self, parent: tk.Widget, item_path: Path, is_dir: bool, error_msg: str):
+        super().__init__(parent)
+        self.parent = parent
+        self.item_path = item_path
+        self.is_dir = is_dir
+        self.error_msg = error_msg
+
+        self.action = "abort"
+        self.apply_to_all = False
+
+        item_type = "Folder" if is_dir else "File"
+        self.title(f"{item_type} In Use")
+        self.geometry("450x260")
+        self.resizable(False, False)
+        self.configure(bg="#ffffff")
+        self.transient(parent)
+
+        self._set_icon()
+        self._build_ui()
+        self._center_on_parent()
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    def _set_icon(self):
+        try:
+            if WINDOW_ICON_ICO.exists():
+                self.iconbitmap(str(WINDOW_ICON_ICO))
+        except Exception:
+            pass
+
+    def _center_on_parent(self):
+        self.update_idletasks()
+        p_x = self.parent.winfo_x()
+        p_y = self.parent.winfo_y()
+        p_w = self.parent.winfo_width()
+        p_h = self.parent.winfo_height()
+
+        w = self.winfo_width()
+        h = self.winfo_height()
+
+        x = p_x + (p_w - w) // 2
+        y = p_y + (p_h - h) // 2
+        self.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
+
+    def _get_item_metadata(self) -> str:
+        try:
+            stat = self.item_path.stat()
+            dt = datetime.fromtimestamp(stat.st_ctime)
+            time_str = dt.strftime("%m/%d/%Y %I:%M %p").lstrip("0").replace("/0", "/")
+            return f"Date created: {time_str}"
+        except Exception:
+            return ""
+
+    def _build_ui(self):
+        content = tk.Frame(self, bg="#ffffff", padx=24, pady=16)
+        content.pack(fill="both", expand=True)
+
+        item_text = "the folder or a file in it" if self.is_dir else "the file"
+        lbl_main = tk.Label(
+            content,
+            text=f"The action can't be completed because {item_text} is open in another program",
+            font=("Segoe UI", 9),
+            fg="#0f172a",
+            bg="#ffffff",
+            anchor="w",
+            justify="left",
+            wraplength=400,
+        )
+        lbl_main.pack(fill="x", pady=(0, 4))
+
+        lbl_sub = tk.Label(
+            content,
+            text="Close the folder or file and try again." if self.is_dir else "Close the file and try again.",
+            font=("Segoe UI", 9),
+            fg="#0f172a",
+            bg="#ffffff",
+            anchor="w",
+        )
+        lbl_sub.pack(fill="x", pady=(0, 14))
+
+        # Item info box (Icon + Name + Timestamp)
+        card = tk.Frame(content, bg="#ffffff")
+        card.pack(fill="x", pady=(0, 14))
+
+        icon_text = "📁" if self.is_dir else "📄"
+        lbl_icon = tk.Label(
+            card,
+            text=icon_text,
+            font=("Segoe UI Emoji", 24),
+            fg="#f59e0b" if self.is_dir else "#64748b",
+            bg="#ffffff",
+        )
+        lbl_icon.pack(side="left", padx=(4, 12))
+
+        meta_frame = tk.Frame(card, bg="#ffffff")
+        meta_frame.pack(side="left", fill="x", expand=True)
+
+        lbl_name = tk.Label(
+            meta_frame,
+            text=self.item_path.name,
+            font=("Segoe UI", 9, "bold"),
+            fg="#0f172a",
+            bg="#ffffff",
+            anchor="w",
+            justify="left",
+            wraplength=340,
+        )
+        lbl_name.pack(fill="x")
+
+        metadata_text = self._get_item_metadata()
+        if metadata_text:
+            lbl_meta = tk.Label(
+                meta_frame,
+                text=metadata_text,
+                font=("Segoe UI", 8),
+                fg="#64748b",
+                bg="#ffffff",
+                anchor="w",
+            )
+            lbl_meta.pack(fill="x", pady=(2, 0))
+
+        # Checkbox: "Do this for all current items"
+        self.var_apply_all = tk.BooleanVar(value=False)
+        chk_all = tk.Checkbutton(
+            content,
+            text="Do this for all current items",
+            variable=self.var_apply_all,
+            font=("Segoe UI", 9),
+            fg="#1e293b",
+            bg="#ffffff",
+            activebackground="#ffffff",
+            activeforeground="#0f172a",
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
+        )
+        chk_all.pack(anchor="w", pady=(0, 16))
+
+        # Buttons row
+        btn_frame = tk.Frame(content, bg="#ffffff")
+        btn_frame.pack(fill="x", side="bottom")
+
+        btn_center_box = tk.Frame(btn_frame, bg="#ffffff")
+        btn_center_box.pack(anchor="center")
+
+        btn_try = tk.Button(
+            btn_center_box,
+            text="Try Again",
+            command=self._on_try_again,
+            font=("Segoe UI", 9),
+            bg="#ffffff",
+            fg="#1e293b",
+            activebackground="#f1f5f9",
+            relief="solid",
+            bd=1,
+            padx=16,
+            pady=3,
+            cursor="hand2",
+        )
+        btn_try.pack(side="left", padx=4)
+
+        btn_skip = tk.Button(
+            btn_center_box,
+            text="Skip",
+            command=self._on_skip,
+            font=("Segoe UI", 9),
+            bg="#ffffff",
+            fg="#1e293b",
+            activebackground="#f1f5f9",
+            relief="solid",
+            bd=1,
+            padx=16,
+            pady=3,
+            cursor="hand2",
+        )
+        btn_skip.pack(side="left", padx=4)
+
+        btn_cancel = tk.Button(
+            btn_center_box,
+            text="Cancel",
+            command=self._on_cancel,
+            font=("Segoe UI", 9),
+            bg="#ffffff",
+            fg="#1e293b",
+            activebackground="#f1f5f9",
+            relief="solid",
+            bd=1,
+            padx=16,
+            pady=3,
+            cursor="hand2",
+        )
+        btn_cancel.pack(side="left", padx=4)
+
+        for btn in (btn_try, btn_skip, btn_cancel):
+            btn.bind("<Enter>", lambda e, b=btn: b.configure(bg="#f1f5f9"))
+            btn.bind("<Leave>", lambda e, b=btn: b.configure(bg="#ffffff"))
+
+    def _on_try_again(self):
+        self.action = "retry"
+        self.apply_to_all = self.var_apply_all.get()
+        self.destroy()
+
+    def _on_skip(self):
+        self.action = "skip"
+        self.apply_to_all = self.var_apply_all.get()
+        self.destroy()
+
+    def _on_cancel(self):
+        self.action = "abort"
+        self.apply_to_all = False
+        self.destroy()
+
+    def show(self) -> Tuple[str, bool]:
+        self.grab_set()
+        self.wait_window()
+        return self.action, self.apply_to_all
 
 
 class CheckboxRow:
@@ -707,20 +935,27 @@ class FolderCleanerApp:
         if self.progress_dialog and self.progress_dialog.winfo_exists():
             self.progress_dialog.update_progress(current_path, cleaned_count, total_items)
 
-    def _handle_prompt_skip(self, file_name: str, error_msg: str) -> bool:
+    def _handle_prompt_skip(self, item_path: Path, is_dir: bool, error_msg: str) -> Tuple[str, bool]:
         """
-        Native Windows popup asking whether to skip an in-use / locked file.
+        Displays a Windows-style 'File / Folder In Use' dialog with options:
+        - 'Try Again'
+        - 'Skip'
+        - 'Cancel'
+        - '[ ] Do this for all current items' checkbox
+        Returns: (action: str, apply_to_all: bool)
         """
-        message = (
-            f'The file "{file_name}" is in use and cannot be deleted.\n\n'
-            f"Do you want to skip this file and continue?"
+        parent_win = (
+            self.progress_dialog
+            if self.progress_dialog and self.progress_dialog.winfo_exists()
+            else self.root
         )
-        return messagebox.askyesno(
-            title=APP_NAME,
-            message=message,
-            icon="warning",
-            parent=self.progress_dialog if self.progress_dialog and self.progress_dialog.winfo_exists() else self.root,
+        dialog = FileInUseDialog(
+            parent=parent_win,
+            item_path=item_path,
+            is_dir=is_dir,
+            error_msg=error_msg,
         )
+        return dialog.show()
 
     def _handle_complete(self, summary: dict):
         if self.progress_dialog and self.progress_dialog.winfo_exists():
