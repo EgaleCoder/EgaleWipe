@@ -972,11 +972,20 @@ class FolderCleanerApp:
             if not row.is_temporary:
                 row.set_checked(True)
 
+        cleaned_bytes = summary.get("cleaned_bytes", 0)
+        gb_cleaned = cleaned_bytes / (1024 ** 3)
+        if gb_cleaned >= 0.01:
+            data_str = f"{gb_cleaned:.2f} GB"
+        else:
+            mb_cleaned = cleaned_bytes / (1024 ** 2)
+            data_str = f"{gb_cleaned:.3f} GB ({mb_cleaned:.1f} MB)"
+
         if summary.get("cancelled", False):
             messagebox.showinfo(
                 APP_NAME,
                 f"Cleaning was cancelled.\n\n"
                 f"Items deleted: {summary.get('cleaned_count', 0)}\n"
+                f"Data deleted: {data_str}\n"
                 f"Items skipped: {summary.get('skipped_count', 0)}",
             )
         else:
@@ -987,7 +996,8 @@ class FolderCleanerApp:
             messagebox.showinfo(
                 APP_NAME,
                 f"Cleanup completed successfully!\n\n"
-                f"Total items deleted: {total_cleaned}\n\n"
+                f"Total items deleted: {total_cleaned}\n"
+                f"Total data deleted: {data_str}\n\n"
                 f"Cleaned folders:\n{folder_list_str}",
             )
 
